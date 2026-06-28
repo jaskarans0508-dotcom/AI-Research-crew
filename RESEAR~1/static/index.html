@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Research Crew</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --bg: #0f1117;
+    --panel: #181b25;
+    --border: #2a2e3a;
+    --text: #e6e8ee;
+    --muted: #8a8f9e;
+    --accent: #6ea8fe;
+    --good: #4caf7d;
+    --bad: #e0644b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  header {
+    padding: 28px 32px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    margin: 0 0 4px;
+    font-size: 22px;
+  }
+  header p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  main {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 24px 32px 64px;
+  }
+  form {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+  }
+  input[type="text"] {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 12px 14px;
+    border-radius: 8px;
+    font-size: 15px;
+  }
+  input[type="text"]:focus { outline: 2px solid var(--accent); }
+  button {
+    background: var(--accent);
+    color: #0f1117;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin-bottom: 14px;
+    animation: fade-in 0.25s ease-out;
+  }
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .panel h2 {
+    margin: 0 0 10px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+  }
+  .tag {
+    display: inline-block;
+    background: #232838;
+    border-radius: 6px;
+    padding: 4px 9px;
+    margin: 0 6px 6px 0;
+    font-size: 13px;
+  }
+  .source {
+    margin-bottom: 8px;
+    font-size: 14px;
+  }
+  .source a { color: var(--accent); text-decoration: none; }
+  .source a:hover { text-decoration: underline; }
+  .source .snippet { color: var(--muted); font-size: 13px; }
+  ul.notes { margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6; }
+  .draft-text {
+    white-space: pre-wrap;
+    font-size: 14.5px;
+    line-height: 1.65;
+  }
+  .feedback {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    background: #2a2017;
+    border: 1px solid #463524;
+    font-size: 13.5px;
+    color: #e3b97f;
+  }
+  .approved { color: var(--good); font-weight: 600; }
+  .rejected { color: var(--bad); font-weight: 600; }
+  .status-line { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+  .spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin-right: 6px;
+    vertical-align: -1px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error-panel {
+    border-color: var(--bad);
+    background: #241a1a;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Research Crew</h1>
+  <p>Researcher &rarr; Writer &rarr; Reviewer, working live on a topic of your choice.</p>
+</header>
+<main>
+  <form id="topic-form">
+    <input id="topic-input" type="text" placeholder="e.g. the history of the printing press" autocomplete="off" />
+    <button id="submit-btn" type="submit">Run crew</button>
+  </form>
+  <div id="status" class="status-line"></div>
+  <div id="results"></div>
+</main>
+
+<script>
+const form = document.getElementById("topic-form");
+const input = document.getElementById("topic-input");
+const button = document.getElementById("submit-btn");
+const statusEl = document.getElementById("status");
+const results = document.getElementById("results");
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function addPanel(html, className) {
+  const div = document.createElement("div");
+  div.className = "panel" + (className ? " " + className : "");
+  div.innerHTML = html;
+  results.appendChild(div);
+  div.scrollIntoView({ behavior: "smooth", block: "end" });
+  return div;
+}
+
+function setStatus(text) {
+  statusEl.innerHTML = text;
+}
+
+function runCrew(topic) {
+  results.innerHTML = "";
+  button.disabled = true;
+  setStatus('<span class="spinner"></span>Starting crew&hellip;');
+
+  const source = new EventSource("/run?topic=" + encodeURIComponent(topic));
+
+  source.onmessage = (e) => {
+    const event = JSON.parse(e.data);
+
+    if (event.type === "queries") {
+      setStatus('<span class="spinner"></span>Searching the web&hellip;');
+      const tags = event.queries.map((q) => `<span class="tag">${escapeHtml(q)}</span>`).join("");
+      addPanel(`<h2>Search queries</h2>${tags}`);
+    } else if (event.type === "sources") {
+      const items = event.sources
+        .map(
+          (s) =>
+            `<div class="source"><a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.title)}</a><br/><span class="snippet">${escapeHtml(s.snippet)}</span></div>`
+        )
+        .join("");
+      addPanel(`<h2>Sources (${event.sources.length})</h2>${items || "<em>none found</em>"}`);
+    } else if (event.type === "notes") {
+      setStatus('<span class="spinner"></span>Writing draft&hellip;');
+      const items = event.notes.map((n) => `<li>${escapeHtml(n)}</li>`).join("");
+      addPanel(`<h2>Research notes</h2><ul class="notes">${items}</ul>`);
+    } else if (event.type === "draft") {
+      setStatus('<span class="spinner"></span>Reviewing draft&hellip;');
+      addPanel(`<h2>Draft &mdash; round ${event.round}</h2><div class="draft-text">${escapeHtml(event.draft)}</div>`);
+    } else if (event.type === "review") {
+      const verdict = event.approved
+        ? '<span class="approved">Approved</span>'
+        : '<span class="rejected">Needs revision</span>';
+      const feedback = event.feedback
+        ? `<div class="feedback">${escapeHtml(event.feedback)}</div>`
+        : "";
+      addPanel(`<h2>Review &mdash; round ${event.round}</h2>${verdict}${feedback}`);
+      if (!event.approved) {
+        setStatus('<span class="spinner"></span>Revising draft&hellip;');
+      }
+    } else if (event.type === "error") {
+      addPanel(`<h2>Error</h2>${escapeHtml(event.message)}`, "error-panel");
+      setStatus("Stopped due to an error.");
+      button.disabled = false;
+      source.close();
+    } else if (event.type === "done") {
+      const verdict = event.approved
+        ? '<span class="approved">Approved</span>'
+        : '<span class="rejected">Gave up after max rounds</span>';
+      addPanel(
+        `<h2>Final brief</h2>${verdict} &middot; ${event.rounds} round(s) &middot; ${event.sources.length} source(s)<div class="draft-text" style="margin-top:10px;">${escapeHtml(event.final_brief)}</div>`
+      );
+      setStatus("Done.");
+      button.disabled = false;
+      source.close();
+    }
+  };
+
+  source.onerror = () => {
+    setStatus("Connection lost or server error.");
+    button.disabled = false;
+    source.close();
+  };
+}
+
+form.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const topic = input.value.trim();
+  if (topic.length < 3) {
+    setStatus("Enter a topic (at least 3 characters).");
+    return;
+  }
+  runCrew(topic);
+});
+</script>
+</body>
+</html>

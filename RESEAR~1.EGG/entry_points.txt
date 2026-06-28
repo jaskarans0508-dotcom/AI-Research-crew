@@ -1,0 +1,2 @@
+[console_scripts]
+research-crew = research_crew.__main__:main
